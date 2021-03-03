@@ -1,0 +1,31 @@
+alpha = { 'a'..'z' | 'A'..'Z' }
+char = { ASCII_ALPHANUMERIC | "." | "_" | "/" | "-" | "=" }
+digit = { '0'..'9' }
+uppercase = { 'A'..'Z' }
+WHITESPACE = _{ " " | "\t" }
+semicolon = {":"}
+var_seperator = _{NEWLINE | WHITESPACE}
+env_variable = @{"$" ~ (uppercase | "_")+}
+macro_parameter = @{char+}
+macro_name = @{char+}
+macro_parameters = { ("," | macro_parameter)* }
+spec_macro_without_parameters = {"%{" ~ macro_name ~ "}" | "%" ~ macro_name}
+spec_macro_with_parameters = {"%{" ~ macro_name ~ "("~macro_parameters~")" ~ "}" | "%" ~ macro_name ~ "("~macro_parameters~")"}
+spec_macro = { (spec_macro_with_parameters|spec_macro_without_parameters) }
+spec_optional_macro = @{ "%{?" ~ char+ ~ "}" }
+function = { "%(" ~ (spec_macro | spec_optional_macro | text)* ~ ")" }
+text = @{ char+ }
+variable_text = { (function | spec_macro | spec_optional_macro | text)* }
+variable_name = @{uppercase ~ alpha+ ~ digit*}
+variable = {variable_name ~ ":" ~ variable_text?}
+multiline_variable = {variable_name ~ ":" ~ NEWLINE ~ variable_text? ~ NEWLINE ~ NEWLINE}
+section_text = @{(char | " ")+}
+section_line = {section_text? ~ (spec_macro | spec_optional_macro | env_variable) ~ section_text? ~ NEWLINE}
+section_name = @{char+}
+section = { ("%" ~ section_name ~ NEWLINE ~ (section_line | spec_macro)* ~ NEWLINE | "%" ~ section_name) }
+
+file = {
+	SOI ~
+    (variable | multiline_variable | section | NEWLINE)+ ~
+    EOI
+}
