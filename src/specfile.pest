@@ -1,5 +1,5 @@
 alpha = { 'a'..'z' | 'A'..'Z' }
-char = { ASCII_ALPHANUMERIC | "," | "." | "_" | "/" | "-" | "=" | ">" | "<" | "#" | "!" | "'" }
+char = { ASCII_ALPHANUMERIC | "," | "." | "_" | "/" | "-" | "=" | ">" | "<" | "!" | "'" | "#" }
 digit = { '0'..'9' }
 uppercase = { 'A'..'Z' }
 WHITESPACE = _{ " " | "\t" }
@@ -14,19 +14,25 @@ spec_macro_with_parameters = {"%{" ~ macro_name ~ "("~macro_parameters~")" ~ "}"
 spec_macro = { (spec_macro_with_parameters|spec_macro_without_parameters) }
 spec_optional_macro = @{ "%{?" ~ char+ ~ "}" }
 function = { "%(" ~ (spec_macro | spec_optional_macro | text)* ~ ")" }
-text = @{ char+ }
-variable_text = { (function | spec_macro | spec_optional_macro | text)* }
+text = @{ char+ | WHITESPACE }
+text_with_macros = @{ (function | spec_macro | spec_optional_macro | text)* }
 variable_name = @{uppercase ~ alpha+ ~ digit*}
-variable = {variable_name ~ ":" ~ variable_text?}
-multiline_variable = {variable_name ~ ":" ~ NEWLINE ~ variable_text? ~ NEWLINE ~ NEWLINE}
-section_text = @{(char | " ")+}
-section_line = {section_text? ~ (spec_macro | spec_optional_macro | env_variable)* ~ section_text? ~ NEWLINE}
-section_name = @{char+}
-comment_line = {"#" ~ section_text }
-section = { ("%" ~ section_name ~ NEWLINE ~ comment_line ~ NEWLINE | "%" ~ section_name ~ NEWLINE ~ (section_line | spec_macro)* ~ NEWLINE | "%" ~ section_name) }
+variable = {variable_name ~ ":" ~ text_with_macros?}
+multiline_variable = {variable_name ~ ":" ~ NEWLINE ~ text_with_macros? ~ NEWLINE ~ NEWLINE}
+section_text = @{ (function | spec_macro | spec_optional_macro | text)+ }
+section_name = @{"%" ~ char+}
+comment_line = @{ "#" ~ section_text }
+section_line = { (!"%" ~ section_text ~ NEWLINE) | comment_line ~ NEWLINE }
+build_section = {"%build" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+description_section = {"%description" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+prep_section = {"%prep" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+files_section = {"%files" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+install_section = {"%install" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+changelog_section = {"%changelog" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+section = { build_section | description_section | prep_section | files_section | install_section | changelog_section }
 
-file = {
+file = _{
 	SOI ~
-    (variable | multiline_variable | section | NEWLINE)+ ~
+    (variable ~ NEWLINE* | multiline_variable ~ NEWLINE | section | NEWLINE )+ ~
     EOI
 }
