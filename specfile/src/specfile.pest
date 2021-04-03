@@ -1,0 +1,26 @@
+alpha = { 'a'..'z' | 'A'..'Z' }
+digit = { '0'..'9' }
+uppercase = { 'A'..'Z' }
+char = { ASCII_ALPHANUMERIC | "," | "." | "_" | "/" | "-" | "=" | ">" | "<" | "!" | "'" | "#" }
+WHITESPACE = _{ " " | "\t" }
+text = @{ char+ | WHITESPACE }
+variable_name = @{uppercase ~ alpha+ ~ digit*}
+variable = {variable_name ~ ":" ~ text?}
+multiline_variable = {variable_name ~ ":" ~ NEWLINE ~ text? ~ NEWLINE ~ NEWLINE}
+section_text = @{ text+ }
+section_name = @{"%" ~ char+}
+comment_line = @{ "#" ~ section_text }
+section_line = { (!"%" ~ section_text ~ NEWLINE) | comment_line ~ NEWLINE }
+build_section = {"%build" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+description_section = {"%description" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+prep_section = {"%prep" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+files_section = {"%files" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+install_section = {"%install" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+changelog_section = {"%changelog" ~ NEWLINE ~ section_line+ ~ NEWLINE }
+section = { build_section | description_section | prep_section | files_section | install_section | changelog_section }
+
+file = _{
+	SOI ~
+    (variable ~ NEWLINE* | multiline_variable ~ NEWLINE | section | NEWLINE )+ ~
+    EOI
+}
