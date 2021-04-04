@@ -1,4 +1,4 @@
-mod errors;
+pub mod errors;
 
 extern crate pest;
 #[macro_use]
@@ -7,6 +7,7 @@ extern crate error_chain;
 
 use pest::Parser;
 use errors::*;
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[grammar = "specfile.pest"]
@@ -14,117 +15,133 @@ struct SpecFileParser;
 
 #[derive(Default, Debug)]
 pub struct SpecFile {
-    name: String,
-    version: String,
-    release: String,
-    summary: String,
-    license: String,
-    description: String,
-    prep_script: String,
-    build_script: String,
-    install_script: String,
-    files: Vec<String>,
-    changelog: String,
+    pub name: String,
+    pub version: String,
+    pub release: String,
+    pub summary: String,
+    pub license: String,
+    pub additional_variables: HashMap<String, String>,
+    pub description: String,
+    pub prep_script: String,
+    pub build_script: String,
+    pub install_script: String,
+    pub files: Vec<String>,
+    pub changelog: String,
+}
+
+enum KnownVariableControl {
+    Name,
+    Version,
+    Release,
+    Summary,
+    License,
+    None,
+}
+
+fn append_newline_string(s: &str, section_line: i32) -> String {
+    if section_line == 0 {
+        return s.to_owned();
+    }
+    return "\n".to_owned() + s;
 }
 
 pub fn parse(file_contents: String) -> Result<SpecFile> {
     let pairs = SpecFileParser::parse(Rule::file, &file_contents)?;
+    let mut spec = SpecFile::default();
+
 
     // Because ident_list is silent, the iterator will contain idents
     for pair in pairs {
         // A pair can be converted to an iterator of the tokens which make it up:
         match pair.as_rule() {
             Rule::variable => {
-                let variable_parts: Vec<&str> =
-                    pair.clone().into_inner().map(|p| p.as_str()).collect();
-                println!("{}: {}", variable_parts[0], variable_parts[1]);
+                let mut var_control = KnownVariableControl::None;
+                let mut var_name_tmp = String::new();
+                for variable_rule in pair.clone().into_inner() {
+                    match variable_rule.as_rule() {
+                        Rule::variable_name => {
+                            match variable_rule.as_str() {
+                                "Name" => var_control = KnownVariableControl::Name,
+                                "Version" => var_control = KnownVariableControl::Version,
+                                "Release" => var_control = KnownVariableControl::Release,
+                                "Summary" => var_control = KnownVariableControl::Summary,
+                                "License" => var_control = KnownVariableControl::License,
+                                _ => var_control = {
+                                    var_name_tmp = variable_rule.as_str().to_string();
+                                    KnownVariableControl::None
+                                },
+                            }
+                        }
+                        Rule::variable_text => {
+                            match var_control {
+                                KnownVariableControl::Name => spec.name = variable_rule.as_str().to_string(),
+                                KnownVariableControl::Version => spec.version = variable_rule.as_str().to_string(),
+                                KnownVariableControl::Release => spec.release = variable_rule.as_str().to_string(),
+                                KnownVariableControl::Summary =>spec.summary = variable_rule.as_str().to_string(),
+                                KnownVariableControl::License => spec.license = variable_rule.as_str().to_string(),
+                                KnownVariableControl::None => {
+                                    spec.additional_variables.insert(var_name_tmp.clone(), variable_rule.as_str().to_string());
+                                }
+                            }
+                        }
+                        _ => ()
+                    }
+                }
             }
             Rule::section => {
+                let mut section_name_tmp = String::new();
+                let mut section_line = 0;
                 for section_rule in pair.clone().into_inner() {
                     match section_rule.as_rule() {
-                        Rule::description_section => {
-                            println!("Description:");
-                            for description_rule in section_rule.clone().into_inner() {
-                                match description_rule.as_rule() {
-                                    Rule::section_line => print!("{}", description_rule.as_str()),
-                                    _ => println!(
-                                        "Unknown description: {:?}",
-                                        description_rule.as_rule()
-                                    ),
+                        Rule::section_name => {
+                            section_name_tmp = section_rule.as_str().to_string()
+                        }
+                        Rule::section_line => {
+                            for line_or_comment in section_rule.into_inner() {
+                                match line_or_comment.as_rule() {
+                                    Rule::section_text => {
+                                        match section_name_tmp.as_str() {
+                                            "description" => {
+                                                spec.description.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
+                                                section_line = section_line + 1
+                                            },
+                                            "prep" => {
+                                                spec.prep_script.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
+                                                section_line = section_line + 1
+                                            },
+                                            "build" => {
+                                                spec.build_script.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
+                                                section_line = section_line + 1
+                                            },
+                                            "files" => spec.files.push(line_or_comment.as_str().to_string()),
+                                            "install" => {
+                                                spec.install_script.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
+                                                section_line = section_line + 1
+                                            },
+                                            "changelog" => {
+                                                spec.changelog.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
+                                                section_line = section_line + 1
+                                            },
+                                            _ => panic!(
+                                                "Unknown Section: {:?}",
+                                                line_or_comment.as_rule()
+                                            ),
+                                        }
+                                    }
+                                    _ => ()
                                 }
                             }
                         }
-                        Rule::prep_section => {
-                            println!("Prep:");
-                            for prep_rule in section_rule.clone().into_inner() {
-                                match prep_rule.as_rule() {
-                                    Rule::section_line => print!("{}", prep_rule.as_str()),
-                                    _ => println!(
-                                        "Unknown description: {:?}",
-                                        prep_rule.as_rule()
-                                    ),
-                                }
-                            }
-                        }
-                        Rule::build_section => {
-                            println!("Build:");
-                            for build_rule in section_rule.clone().into_inner() {
-                                match build_rule.as_rule() {
-                                    Rule::section_line => print!("{}", build_rule.as_str()),
-                                    _ => println!(
-                                        "Unknown description: {:?}",
-                                        build_rule.as_rule()
-                                    ),
-                                }
-                            }
-                        }
-                        Rule::install_section => {
-                            println!("Install:");
-                            for install_rule in section_rule.clone().into_inner() {
-                                match install_rule.as_rule() {
-                                    Rule::section_line => print!("{}", install_rule.as_str()),
-                                    _ => println!(
-                                        "Unknown description: {:?}",
-                                        install_rule.as_rule()
-                                    ),
-                                }
-                            }
-                        }
-                        Rule::files_section => {
-                            println!("Files:");
-                            for files_rule in section_rule.clone().into_inner() {
-                                match files_rule.as_rule() {
-                                    Rule::section_line => print!("{}", files_rule.as_str()),
-                                    _ => println!(
-                                        "Unknown description: {:?}",
-                                        files_rule.as_rule()
-                                    ),
-                                }
-                            }
-                        }
-                        Rule::changelog_section => {
-                            println!("Changelog:");
-                            for changelog_rule in section_rule.clone().into_inner() {
-                                match changelog_rule.as_rule() {
-                                    Rule::section_line => print!("{}", changelog_rule.as_str()),
-                                    _ => println!(
-                                        "Unknown description: {:?}",
-                                        changelog_rule.as_rule()
-                                    ),
-                                }
-                            }
-                        }
-                        _ => print!("Rule:    {:?}", section_rule.as_rule()),
+                        _ => panic!("Rule not known please update the code: {:?}", section_rule.as_rule()),
                     }
                 }
             }
             Rule::EOI => {}
-            _ => print!("Rule:    {:?}", pair.as_rule()),
+            _ => panic!("Rule not known please update the code: {:?}", pair.as_rule()),
         }
-        println!();
     }
 
-    Ok(SpecFile::default())
+    Ok(spec)
 }
 
 #[cfg(test)]
