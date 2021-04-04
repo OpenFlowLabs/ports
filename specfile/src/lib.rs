@@ -1,4 +1,5 @@
 pub mod errors;
+pub mod macros;
 
 extern crate pest;
 #[macro_use]
@@ -50,7 +51,6 @@ pub fn parse(file_contents: String) -> Result<SpecFile> {
     let mut spec = SpecFile::default();
 
 
-    // Because ident_list is silent, the iterator will contain idents
     for pair in pairs {
         // A pair can be converted to an iterator of the tokens which make it up:
         match pair.as_rule() {

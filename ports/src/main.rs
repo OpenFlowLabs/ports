@@ -5,6 +5,7 @@ use clap::app_from_crate;
 use clap::{Arg, App};
 use std::fs;
 use specfile::parse;
+use specfile::macros;
 
 fn main() {
     let opts = app_from_crate!().arg(Arg::new("config")
@@ -61,6 +62,11 @@ fn main() {
 
 fn run_package_command(spec_file: &str, _target: &str) -> Result<()> {
     let content_string = fs::read_to_string(spec_file)?;
-    let _spec = parse(content_string)?;
+    let spec = parse(content_string)?;
+    let mp = macros::MacroParser {
+        proto_dir: "homedir".to_owned()
+    };
+    let test = mp.parse(spec.build_script)?;
+    println!("{}", test);
     Ok(())
 }

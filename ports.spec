@@ -18,7 +18,7 @@ automated/better.
 
 %build
 cargo build --release --root %{proto_dir}/usr --bins
-echo "Done"
+echo %{proto_dir}
 
 %files
 /usr/bin/ports
