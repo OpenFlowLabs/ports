@@ -1,5 +1,6 @@
 use pest::Parser;
 use crate::errors::*;
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[grammar = "macro.pest"]
@@ -7,7 +8,13 @@ struct InternalMacroParser;
 
 #[derive(Default, Debug)]
 pub struct MacroParser {
-    pub proto_dir: String,
+    pub macros: HashMap<String, String>
+}
+
+#[derive(Default, Debug)]
+pub struct Macro {
+    pub name: String,
+    pub parameters: Vec<String>
 }
 
 impl MacroParser {
@@ -15,42 +22,52 @@ impl MacroParser {
         let mut return_string = String::new();
 
         for (i, line) in raw_string.lines().enumerate() {
-            let mut replaced_line = line.clone().to_string();
-            let pairs = InternalMacroParser::parse(Rule::text_with_macros, &line)?;
+            let mut replaced_line = String::new();
+            let pairs = InternalMacroParser::parse(Rule::file, &line)?;
 
             for pair in pairs {
-                match pair.as_rule() {
-                    Rule::text_with_macros => {
-                        for inner in pair.into_inner() {
-                            match inner.as_rule() {
-                                Rule::spec_macro => {
-                                    for macro_pair in inner.clone().into_inner() {
-                                        match macro_pair.as_rule() {
-                                            Rule::macro_name => {
-                                                replaced_line = line.replacen(inner.as_str(), self.get_variable(macro_pair.as_str()), 1)
-                                            },
-                                            Rule::macro_parameter => println!("macro parameter: {}", macro_pair.as_str()),
-                                            _ => panic!(
-                                                "Unexpected macro match: {:?}",
-                                                macro_pair.as_rule()
-                                            )
+                for test_pair in pair.into_inner() {
+                    match test_pair.as_rule() {
+                        Rule::text_with_macros => {
+                            for inner in test_pair.into_inner() {
+                                match inner.as_rule() {
+                                    Rule::spec_macro => {
+                                        for macro_pair in inner.clone().into_inner() {
+                                            match macro_pair.as_rule() {
+                                                Rule::macro_name => {
+                                                    replaced_line += self.get_variable(macro_pair.as_str())?;
+                                                },
+                                                Rule::macro_parameter => {
+                                                    println!("macro parameter: {}", macro_pair.as_str())
+                                                },
+                                                _ => panic!(
+                                                    "Unexpected macro match please update the code together with the peg grammar: {:?}",
+                                                    macro_pair.as_rule()
+                                                )
+                                            }
                                         }
                                     }
+                                    _ => panic!(
+                                        "Unexpected inner match please update the code together with the peg grammar: {:?}",
+                                        inner.as_rule()
+                                    )
                                 }
-                                Rule::text => (),
-                                _ => panic!(
-                                    "Unexpected inner match: {:?}",
-                                    inner.as_rule()
-                                )
                             }
-                        }
-                    },
-                    _ => panic!(
-                        "Unexpected match: {:?}",
-                        pair.as_rule()
-                    )
+                        },
+                        Rule::EOI => (),
+                        Rule::text => {
+                            replaced_line += test_pair.as_str();
+                            replaced_line += " ";
+                        },
+                        _ => panic!(
+                            "Unexpected match please update the code together with the peg grammar: {:?}",
+                            test_pair.as_rule()
+                        )
+                    }
                 }
             }
+            replaced_line.trim_end();
+
             if i == 0 {
                 return_string += &replaced_line;
             } else {
@@ -62,11 +79,11 @@ impl MacroParser {
         Ok(return_string)
     }
 
-    fn get_variable(&self, macro_name: &str) -> &str {
-        if macro_name == "proto_dir" {
-            return self.proto_dir.as_str();
+    fn get_variable(&self, macro_name: &str) -> Result<&str> {
+        if self.macros.contains_key(macro_name) {
+            return Ok(self.macros[macro_name].as_str())
         }
-        ""
+        Err(ErrorKind::MacroDoesNotExist(macro_name.to_string()).into())
     }
 }
 

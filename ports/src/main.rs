@@ -1,11 +1,56 @@
-mod errors;
+mod workspace;
+mod sources;
+mod util;
 
-use errors::*;
+#[macro_use]
+extern crate error_chain;
+
 use clap::app_from_crate;
 use clap::{Arg, App};
 use std::fs;
 use specfile::parse;
 use specfile::macros;
+use std::collections::HashMap;
+
+mod errors {
+    use error_chain;
+    use shellexpand::{LookupError};
+    use std::env::{VarError};
+    use url::ParseError as UrlError;
+    use reqwest::Error as ReqwestError;
+    use which::Error as WhichError;
+
+    error_chain!{
+        foreign_links {
+            Io(::std::io::Error);
+            Specfile(specfile::errors::Error);
+            ShellExpand(LookupError<VarError>);
+            Url(UrlError);
+            Reqwest(ReqwestError);
+            Which(WhichError);
+        }
+
+        errors {
+            CantCreateSource(t: String) {
+                display("source for '{}' cannot be created something is off with the formatting", t)
+            }
+
+            NotExtractableSource(t: String) {
+                display("source file {} is not an extractable format", t)
+            }
+        }
+    }
+}
+
+use crate::errors::*;
+use crate::workspace::Workspace;
+
+pub enum Verbose{
+    Off,
+    Some,
+    On,
+    Debug
+}
 
 fn main() {
     let opts = app_from_crate!().arg(Arg::new("config")
@@ -38,12 +83,12 @@ fn main() {
         println!("Value for config: {}", c);
     }
 
-    match opts.occurrences_of("v") {
-        0 => println!("Verbose mode is off"),
-        1 => println!("Verbose mode is kind of on"),
-        2 => println!("Verbose mode is on"),
-        3 | _ => println!("Don't be crazy"),
-    }
+    let verbose = match opts.occurrences_of("v") {
+        0 => Verbose::Off,
+        1 => Verbose::Some,
+        2 => Verbose::On,
+        3 | _ => Verbose::Debug,
+    };
 
     if let Some(ref package_opts) = opts.subcommand_matches("package") {
         let target = package_opts.value_of("target").expect("Target must always be a variable was the default_value removed from code?");
@@ -63,10 +108,21 @@ fn main() {
 fn run_package_command(spec_file: &str, _target: &str) -> Result<()> {
     let content_string = fs::read_to_string(spec_file)?;
     let spec = parse(content_string)?;
+    let mut ws = Workspace::new("")?;
+    let downloaded = ws.get_sources(spec.sources)?;
+    ws.unpack_all_sources(downloaded)?;
+
+    let mut macro_map= HashMap::<String, String>::new();
+    for ws_macro in ws.get_macros() {
+        macro_map.insert(ws_macro.0, ws_macro.1);
+    }
+
     let mp = macros::MacroParser {
-        proto_dir: "homedir".to_owned()
+        macros: macro_map
     };
-    let test = mp.parse(spec.build_script)?;
-    println!("{}", test);
+
+    let build_script = mp.parse(spec.build_script)?;
+    ws.build(build_script)?;
+
     Ok(())
 }

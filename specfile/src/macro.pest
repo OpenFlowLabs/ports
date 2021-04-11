@@ -11,8 +11,9 @@ spec_macro_with_parameters = _{"%{" ~ macro_name ~ "("~macro_parameters~")" ~ "}
 spec_macro = { (spec_macro_with_parameters|spec_macro_without_parameters) }
 spec_optional_macro = @{ "%{?" ~ char+ ~ "}" }
 function = { "%(" ~ (spec_macro | spec_optional_macro | text)* ~ ")" }
-text_with_macros = { text* ~ (function | spec_macro | spec_optional_macro ) ~ text* }
+text_with_macros = { function | spec_macro | spec_optional_macro }
 
+file = {SOI ~ text* ~ (text | text_with_macros)+ ~ text* ~ EOI}
 
 env_variable = @{"$" ~ (env_variable_char | "_")+}
 

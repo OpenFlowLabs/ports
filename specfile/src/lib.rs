@@ -1,10 +1,35 @@
-pub mod errors;
 pub mod macros;
 
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
+
+// Import the macro. Don't forget to add `error-chain` in your
+// `Cargo.toml`!
+#[macro_use]
 extern crate error_chain;
+
+// We'll put our errors in an `errors` module, and other modules in
+// this crate will `use errors::*;` to get access to everything
+// `error_chain!` creates.
+pub mod errors {
+    // Create the Error, ErrorKind, ResultExt, and Result types
+    use crate::Rule;
+    use crate::macros;
+
+    error_chain!{
+        foreign_links {
+            Io(::std::io::Error);
+            Pest(pest::error::Error<Rule>);
+            PestMacro(pest::error::Error<macros::Rule>);
+        }
+        errors {
+            MacroDoesNotExist(t: String) {
+                display("macro '{}' is not defined", t)
+            }
+        }
+    }
+}
 
 use pest::Parser;
 use errors::*;
@@ -21,6 +46,7 @@ pub struct SpecFile {
     pub release: String,
     pub summary: String,
     pub license: String,
+    pub sources: Vec<String>,
     pub additional_variables: HashMap<String, String>,
     pub description: String,
     pub prep_script: String,

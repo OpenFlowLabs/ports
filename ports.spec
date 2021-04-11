@@ -17,8 +17,8 @@ automated/better.
 # Cargo or git will be automatially prepared
 
 %build
-cargo build --release --root %{proto_dir}/usr --bins
-echo %{proto_dir}
+cargo install --path . --target-dir %{source_dir}/cargo --root %{proto_dir}/usr --bins
+ls -alhR %{proto_dir}
 
 %files
 /usr/bin/ports
