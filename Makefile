@@ -9,5 +9,4 @@ target/release/ports:
 	cd ports; cargo build --release
 
 clean:
-	rm -rf target/release/ports
-	rm -rf target/debug/ports
+	cargo clean

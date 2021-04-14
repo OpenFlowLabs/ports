@@ -1,7 +1,15 @@
-use crate::errors::*;
+use crate::errors::Result;
 use url::Url;
 use std::path::Path;
-use crate::util::convert_to_str;
+use std::ffi::OsStr;
+
+#[derive(Debug, Fail)]
+pub enum SourceError {
+    #[fail(display = "can't create source from url: {}", url)]
+    CantCreateSource {
+        url: String,
+    }
+}
 
 pub struct Source {
     pub url: Url,
@@ -11,14 +19,17 @@ pub struct Source {
 impl Source {
     pub fn new(url_string: &str, local_base: &str) -> Result<Source> {
         let url = Url::parse(url_string)?;
-        let str = url.path().to_owned();
-        let path = Path::new(&str);
-        match path.file_name() {
-            Some(fname) => {
-                let s = convert_to_str(fname.to_str())?;
-                return Ok(Source{url, local_name: local_base.to_string() + "/" + &s})
+        let path = url.path().to_owned();
+        let path_vec: Vec<_> = path.split("/").collect();
+        match path_vec.last() {
+            Some(str) => {
+                let local_name = str.clone();
+                Ok(Source {
+                    url,
+                    local_name: local_base.clone().to_owned() + "/" + local_name,
+                })
             }
-            None => Err(ErrorKind::CantCreateSource(url_string.into()).into()),
+            None => Err(SourceError::CantCreateSource {url: url.into_string()})?
         }
     }
 }

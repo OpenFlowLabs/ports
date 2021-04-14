@@ -1,6 +1,15 @@
 use pest::Parser;
-use crate::errors::*;
+use crate::errors::Result;
 use std::collections::HashMap;
+use failure::Fail;
+
+#[derive(Debug, Fail)]
+pub enum MacroParserError {
+    #[fail(display = "macro does not exist: {}", macro_name)]
+    DoesNotExist {
+        macro_name: String,
+    }
+}
 
 #[derive(Parser)]
 #[grammar = "macro.pest"]
@@ -83,7 +92,7 @@ impl MacroParser {
         if self.macros.contains_key(macro_name) {
             return Ok(self.macros[macro_name].as_str())
         }
-        Err(ErrorKind::MacroDoesNotExist(macro_name.to_string()).into())
+        Err(MacroParserError::DoesNotExist {macro_name: macro_name.into()})?
     }
 }
 

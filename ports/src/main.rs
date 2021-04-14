@@ -1,9 +1,8 @@
 mod workspace;
 mod sources;
-mod util;
 
 #[macro_use]
-extern crate error_chain;
+extern crate failure_derive;
 
 use clap::app_from_crate;
 use clap::{Arg, App};
@@ -11,39 +10,16 @@ use std::fs;
 use specfile::parse;
 use specfile::macros;
 use std::collections::HashMap;
+use crate::workspace::Workspace;
 
 mod errors {
-    use error_chain;
-    use shellexpand::{LookupError};
-    use std::env::{VarError};
-    use url::ParseError as UrlError;
-    use reqwest::Error as ReqwestError;
-    use which::Error as WhichError;
+    use failure::Error;
+    use std::result::Result as StdResult;
 
-    error_chain!{
-        foreign_links {
-            Io(::std::io::Error);
-            Specfile(specfile::errors::Error);
-            ShellExpand(LookupError<VarError>);
-            Url(UrlError);
-            Reqwest(ReqwestError);
-            Which(WhichError);
-        }
-
-        errors {
-            CantCreateSource(t: String) {
-                display("source for '{}' cannot be created something is off with the formatting", t)
-            }
-
-            NotExtractableSource(t: String) {
-                display("source file {} is not an extractable format", t)
-            }
-        }
-    }
+    pub type Result<T> = StdResult<T, Error>;
 }
 
-use crate::errors::*;
-use crate::workspace::Workspace;
+use errors::Result;
 
 pub enum Verbose{
     Off,
@@ -103,6 +79,13 @@ fn main() {
         }
     }
 
+    match run_package_command("../ports.spec", "./repository") {
+        Err(e) => {
+            panic!("error: {}", e);
+        },
+        _ => (),
+    }
+
 }
 
 fn run_package_command(spec_file: &str, _target: &str) -> Result<()> {
@@ -123,6 +106,7 @@ fn run_package_command(spec_file: &str, _target: &str) -> Result<()> {
 
     let build_script = mp.parse(spec.build_script)?;
     ws.build(build_script)?;
+    ws.package(spec.files)?;
 
     Ok(())
 }

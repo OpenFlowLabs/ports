@@ -1,18 +1,38 @@
-use crate::errors::*;
 use std::fs::{create_dir_all, File};
 use crate::sources::Source;
 use std::process::{Command, Stdio};
 use std::path::Path;
 use std::io::copy;
-use crate::util::convert_to_str;
 use specfile::SpecFile;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::env;
+use crate::errors::Result;
+use libips::actions::{Manifest, File as FileAction};
+use std::env::{set_current_dir, current_dir};
 
 static DEFAULTWORKSPACEROOT: &str = "~/.ports/wks";
 static DEFAULTARCH: &str = "i386";
 static DEFAULTTAR: &str = "gtar";
+static DEFAULTSHEBANG: &'static [u8; 19usize] = b"#!/usr/bin/env bash";
+
+#[derive(Debug, Fail)]
+enum WorkspaceError {
+    #[fail(display = "command returned {} exit code: {}", command, code)]
+    NonZeroCommandExitCode {
+        command: String,
+        code: i32,
+    },
+    #[fail(display = "source {} cannot be extracted", name)]
+    UnextractableSource {
+        name: String,
+    },
+    #[fail(display = "status code invalid")]
+    InvalidStatusCode,
+    #[fail(display = "source has no extension")]
+    SourceHasNoExtension
+}
+
 
 pub struct Workspace {
     root: String,
@@ -98,8 +118,8 @@ impl Workspace {
     pub fn unpack_source(&self, src: &Source) -> Result<()> {
         match Path::new(&src.local_name).extension() {
             Some(ext) => {
-                if !convert_to_str(ext.to_str())?.contains("tar") {
-                    return Err(ErrorKind::NotExtractableSource(src.local_name.clone()).into());
+                if !ext.to_str().ok_or(WorkspaceError::SourceHasNoExtension)?.contains("tar") {
+                    return Err(WorkspaceError::UnextractableSource { name:  src.local_name.clone()})?;
                 }
                 //TODO support inspecting the tar file to see if we have a top level directory or not
                 let mut tar_cmd = Command::new(DEFAULTTAR)
@@ -110,11 +130,11 @@ impl Workspace {
 
                 let status = tar_cmd.wait()?;
                 if !status.success() {
-                    return Err(ErrorKind::Msg("tar command failed".to_owned()).into());
+                    return Err(WorkspaceError::NonZeroCommandExitCode {command: "tar".to_owned(), code: status.code().ok_or(WorkspaceError::InvalidStatusCode)?})?;
                 }
             }
             None => {
-                return Err(ErrorKind::NotExtractableSource(src.local_name.clone()).into());
+                return Err(WorkspaceError::UnextractableSource {name: src.local_name.clone()})?;
             }
         }
 
@@ -124,7 +144,8 @@ impl Workspace {
     pub fn build(&self, build_script: String) -> Result<()> {
         let build_script_path = self.build_dir.clone() + "/build_script.sh";
         let mut file = File::create(&build_script_path)?;
-        file.write_all(b"#!/usr/bin/env bash\n")?;
+        file.write_all(DEFAULTSHEBANG)?;
+        file.write_all(b"\n")?;
         file.write_all(build_script.as_bytes())?;
         file.write_all(b"\n")?;
         let bash = which::which("bash")?;
@@ -142,8 +163,29 @@ impl Workspace {
 
         let status = shell.wait()?;
         if !status.success() {
-            return Err(ErrorKind::Msg("build script failed".to_owned()).into());
+            return Err(WorkspaceError::NonZeroCommandExitCode {command: "build_script".to_owned(), code: status.code().ok_or(WorkspaceError::InvalidStatusCode)?})?;
         }
+
+        Ok(())
+    }
+
+    pub fn package(&self, file_list: Vec<String>) -> Result<()> {
+        let mut manifest = Manifest::default();
+        let cwd = current_dir()?;
+        set_current_dir(Path::new(&self.proto_dir))?;
+        for f in file_list {
+            if f.starts_with("/") {
+                let mut f_mut = f.clone();
+                f_mut.remove(0);
+                manifest.add_file(FileAction::read_from_path(Path::new(&f_mut))?)
+            } else {
+                manifest.add_file(FileAction::read_from_path(Path::new(&f))?)
+            }
+        }
+        set_current_dir(cwd)?;
+
+        println!("{:?}", manifest);
+
         Ok(())
     }
 }

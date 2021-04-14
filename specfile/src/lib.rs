@@ -3,36 +3,18 @@ pub mod macros;
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
+extern crate failure_derive;
 
-// Import the macro. Don't forget to add `error-chain` in your
-// `Cargo.toml`!
-#[macro_use]
-extern crate error_chain;
 
-// We'll put our errors in an `errors` module, and other modules in
-// this crate will `use errors::*;` to get access to everything
-// `error_chain!` creates.
 pub mod errors {
-    // Create the Error, ErrorKind, ResultExt, and Result types
-    use crate::Rule;
-    use crate::macros;
+    use failure::Error;
+    use std::result::Result as StdResult;
 
-    error_chain!{
-        foreign_links {
-            Io(::std::io::Error);
-            Pest(pest::error::Error<Rule>);
-            PestMacro(pest::error::Error<macros::Rule>);
-        }
-        errors {
-            MacroDoesNotExist(t: String) {
-                display("macro '{}' is not defined", t)
-            }
-        }
-    }
+    pub type Result<T> = StdResult<T, Error>;
 }
 
 use pest::Parser;
-use errors::*;
+use errors::Result;
 use std::collections::HashMap;
 
 #[derive(Parser)]
@@ -47,7 +29,7 @@ pub struct SpecFile {
     pub summary: String,
     pub license: String,
     pub sources: Vec<String>,
-    pub additional_variables: HashMap<String, String>,
+    pub variables: HashMap<String, String>,
     pub description: String,
     pub prep_script: String,
     pub build_script: String,
@@ -106,7 +88,7 @@ pub fn parse(file_contents: String) -> Result<SpecFile> {
                                 KnownVariableControl::Summary =>spec.summary = variable_rule.as_str().to_string(),
                                 KnownVariableControl::License => spec.license = variable_rule.as_str().to_string(),
                                 KnownVariableControl::None => {
-                                    spec.additional_variables.insert(var_name_tmp.clone(), variable_rule.as_str().to_string());
+                                    spec.variables.insert(var_name_tmp.clone(), variable_rule.as_str().to_string());
                                 }
                             }
                         }
@@ -139,7 +121,7 @@ pub fn parse(file_contents: String) -> Result<SpecFile> {
                                                 spec.build_script.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
                                                 section_line = section_line + 1
                                             },
-                                            "files" => spec.files.push(line_or_comment.as_str().to_string()),
+                                            "files" => spec.files.push(line_or_comment.as_str().trim_end().to_string()),
                                             "install" => {
                                                 spec.install_script.push_str(append_newline_string(line_or_comment.as_str(), section_line).as_str());
                                                 section_line = section_line + 1
@@ -162,7 +144,7 @@ pub fn parse(file_contents: String) -> Result<SpecFile> {
                     }
                 }
             }
-            Rule::EOI => {}
+            Rule::EOI => (),
             _ => panic!("Rule not known please update the code: {:?}", pair.as_rule()),
         }
     }
